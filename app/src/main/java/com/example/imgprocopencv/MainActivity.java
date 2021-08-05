@@ -3,6 +3,9 @@ package com.example.imgprocopencv;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
@@ -17,6 +20,8 @@ import org.opencv.android.Utils;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.Rect;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
@@ -40,6 +45,12 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private int frameCount = 0;
 
     private List<Mat> frames = new ArrayList<>();
+
+    private Mat firstFrame = null;
+    private Mat secondFrame = null;
+    private Bitmap backImg = null;
+
+    private long timeStamp = System.currentTimeMillis();
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -51,6 +62,9 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.java_surface_view);
         mOpenCvCameraView.setVisibility(CameraBridgeViewBase.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
+
+
+        backImg = drawableToBitmap(getDrawable(R.drawable.img_back_1));
     }
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
@@ -74,6 +88,11 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     public void onCameraViewStarted(int width, int height) {
         mRgba = new Mat(width, height, CvType.CV_8UC4);
         mHsv = new Mat(width, height, CvType.CV_8UC3);
+
+        firstFrame=mRgba;
+
+        Utils.bitmapToMat(backImg,firstFrame);
+
     }
 
     @Override
@@ -84,36 +103,14 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
 
-        List<Mat> channels = new ArrayList<>();
-        Core.split(inputFrame.rgba(), channels);
-        Mat red = channels.get(0);
-        Mat blue = channels.get(1);
-        Mat green = channels.get(2);
 
-        List<Mat> c = new ArrayList<>();
-
-        c.add(red);
-        c.add(blue);
-        c.add(green);
-
-//        Core.absdiff();
-//        Imgproc.threshold()
-        Core.merge(c,mRgba);
-
-        if (frameCount != 2){
-            frames.add(mRgba);
-            Log.e("Frame"," count "+frameCount);
-            frameCount++;
+        if (System.currentTimeMillis() > timeStamp){
+            process(inputFrame.rgba());
+            timeStamp=timeStamp+2000;
+            Log.e("Called","process");
         }
 
-        if (frames.size() == 2){
-            process();
-
-        }
-
-
-
-        return mRgba;
+        return inputFrame.rgba();
     }
 
     @Override
@@ -179,10 +176,16 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     }
 
 
-    private void process(){
+    private void process(Mat secondFrame){
 
-        Mat frame1 = frames.get(0);
-        Mat frame2 = frames.get(1);
+        if (firstFrame == null | secondFrame == null){
+            Log.e("Frame","Not get");
+            return;
+        }
+
+
+        Mat frame1 = firstFrame;
+        Mat frame2 = secondFrame;
 
         Mat redFrame1 = getChannel(frame1).get(0);
         Mat blueFrame1 = getChannel(frame1).get(1);
@@ -204,15 +207,34 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         Mat blueDif = findAbsDiff(blueBlurFrame1Gaussian,blueBlurFrame2Gaussian);
         Mat greenDif = findAbsDiff(greenBlurFrame1Gaussian,greenBlurFrame2Gaussian);
 
-        Mat threshold  = findThreshold(redDif);
+        Mat thresholdRed  = findThreshold(redDif);
+
+        getContourArea(thresholdRed);
 
 
-
-        threshold.get(1,1);
-        //findContours();
-
-
+     //   Imgproc.drawContours();
     }
+
+    private static ArrayList<Rect> getContourArea(Mat mat) {
+        Mat hierarchy = new Mat();
+        Mat image = mat.clone();
+        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+        Imgproc.findContours(image, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+        Rect rect = null;
+        double maxArea = 300;
+        ArrayList<Rect> arr = new ArrayList<Rect>();
+        for (int i = 0; i < contours.size(); i++) {
+            Mat contour = contours.get(i);
+            double contourArea = Imgproc.contourArea(contour);
+            if (contourArea > maxArea) {
+                rect = Imgproc.boundingRect(contours.get(i));
+                Log.e("Rect","x-"+rect.x+", y-"+rect.y+" h-"+rect.height+", w-"+rect.width);
+                arr.add(rect);
+            }
+        }
+        return arr;
+    }
+
 
     private void SaveImage(Mat red, Mat blue, Mat green) {
 
@@ -265,4 +287,25 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     }
 
 
+    public static Bitmap drawableToBitmap (Drawable drawable) {
+        Bitmap bitmap = null;
+
+        if (drawable instanceof BitmapDrawable) {
+            BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+            if(bitmapDrawable.getBitmap() != null) {
+                return bitmapDrawable.getBitmap();
+            }
+        }
+
+        if(drawable.getIntrinsicWidth() <= 0 || drawable.getIntrinsicHeight() <= 0) {
+            bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888); // Single color bitmap will be created of 1x1 pixel
+        } else {
+            bitmap = Bitmap.createBitmap(drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight(), Bitmap.Config.ARGB_8888);
+        }
+
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.draw(canvas);
+        return bitmap;
+    }
 }
