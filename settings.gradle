@@ -1,0 +1,3 @@
+rootProject.name = "ImgProcOpenCV"
+include ':app'
+include ':sdk'
