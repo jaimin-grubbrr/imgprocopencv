@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 import android.view.WindowManager;
 
@@ -19,6 +20,8 @@ import org.opencv.core.Mat;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -105,13 +108,10 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
         if (frames.size() == 2){
             process();
+
         }
 
-/*
-        if (!isSaved){
-            SaveImage(mRgba,blue,green);
-        }
-*/
+
 
         return mRgba;
     }
@@ -213,5 +213,56 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
 
     }
+
+    private void SaveImage(Mat red, Mat blue, Mat green) {
+
+        Mat blueBlur = applyGaussianBlur(blue);
+        Mat redBlur = applyGaussianBlur(red);
+        Mat greenBlur = applyGaussianBlur(green);
+
+
+        Bitmap.Config conf = Bitmap.Config.ARGB_8888; // see other conf types
+        Bitmap bitmap = Bitmap.createBitmap(red.width(),red.height(),conf);
+        Bitmap bitmapBlur = Bitmap.createBitmap(red.width(),red.height(),conf);
+
+        Mat updateMat = new Mat(red.rows(),red.cols(),red.type());
+
+        Imgproc.GaussianBlur(red,updateMat,new Size(15, 15),0);
+
+        Utils.matToBitmap(red,bitmap);
+        Utils.matToBitmap(updateMat,bitmapBlur);
+
+        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
+        File myDir = new File(root + "/saved_images");
+        if (!myDir.exists()){
+            myDir.mkdirs();
+        }
+
+        String fname = "real.jpg";
+        File file = new File (myDir, fname);
+        if (file.exists ()) file.delete ();
+
+        String fname1 = "blur.jpg";
+        File blurFile = new File (myDir, fname1);
+        if (blurFile.exists ()) blurFile.delete ();
+
+        try {
+            FileOutputStream outBlur = new FileOutputStream(blurFile);
+            bitmapBlur.compress(Bitmap.CompressFormat.JPEG, 100, outBlur);
+            outBlur.flush();
+            outBlur.close();
+
+            FileOutputStream out = new FileOutputStream(file);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
+            out.flush();
+            out.close();
+
+            isSaved=true;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 
 }
