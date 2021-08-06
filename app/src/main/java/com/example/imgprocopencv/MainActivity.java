@@ -103,7 +103,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
                     tracker.draw(canvas);
                 });
 
-        backImg = drawableToBitmap(getDrawable(R.drawable.img_back_1));
+        backImg = drawableToBitmap(getDrawable(R.drawable.img_1920));
     }
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
