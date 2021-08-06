@@ -4,8 +4,8 @@
 4
 5    <uses-sdk
 6        android:minSdkVersion="21"
-6-->/Users/jaimin/AndroidStudioProjects/imgprocopencv/sdk/java/AndroidManifest.xml
+6-->/home/mustan/Jaimin/Demos/ImgProcOpenCV/sdk/java/AndroidManifest.xml
 7        android:targetSdkVersion="26" />
-7-->/Users/jaimin/AndroidStudioProjects/imgprocopencv/sdk/java/AndroidManifest.xml
+7-->/home/mustan/Jaimin/Demos/ImgProcOpenCV/sdk/java/AndroidManifest.xml
 8
 9</manifest>

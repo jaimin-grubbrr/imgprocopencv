@@ -2,14 +2,24 @@ package com.example.imgprocopencv;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.util.Log;
 import android.view.WindowManager;
+import android.widget.FrameLayout;
+import android.widget.Toast;
+
+import com.example.imgprocopencv.tflite.ClassifierQuantizedMobileNet;
+import com.example.imgprocopencv.tracker.MultiBoxTracker;
+import com.example.imgprocopencv.views.OverlayView;
 
 import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraActivity;
@@ -21,12 +31,16 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
+import org.opencv.core.Point;
 import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -51,6 +65,12 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     private Bitmap backImg = null;
 
     private long timeStamp = System.currentTimeMillis();
+    private OverlayView trackingOverlay = null;
+    private MultiBoxTracker tracker;
+    private Handler handler;
+    private HandlerThread handlerThread;
+    private ClassifierQuantizedMobileNet classifier;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -58,11 +78,30 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
         setContentView(R.layout.activity_main);
 
+        try {
+            classifier = new ClassifierQuantizedMobileNet(this, com.example.imgprocopencv.tflite.Classifier.Device.NNAPI, 4);    // classifier threads are fixed here
+        } catch (final IOException e) {
+            e.printStackTrace();
+            Toast toast =
+                    Toast.makeText(
+                            getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
+            toast.show();
+            finish();
+        }
+
+        tracker = new MultiBoxTracker(this);
+
 
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.java_surface_view);
         mOpenCvCameraView.setVisibility(CameraBridgeViewBase.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
 
+        trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
+        trackingOverlay.addCallback(
+                canvas -> {
+//                    Log.e("trackingOverlay","Callback child views"+trackingOverlay);
+                    tracker.draw(canvas);
+                });
 
         backImg = drawableToBitmap(getDrawable(R.drawable.img_back_1));
     }
@@ -91,6 +130,16 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
         firstFrame=mRgba;
 
+
+        Bitmap backImgA = Bitmap.createScaledBitmap(
+                backImg, mRgba.width(), mRgba.height(), false);
+        tracker.setFrameConfiguration(width,height, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(mOpenCvCameraView.getHeight(), mOpenCvCameraView.getWidth());
+        //trackingOverlay.setLayoutParams(params);
+
+        Log.e("Mat","width "+mRgba.width()+"");
+        Log.e("Mat","height "+mRgba.height()+"");
         Utils.bitmapToMat(backImg,firstFrame);
 
     }
@@ -105,8 +154,11 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
 
         if (System.currentTimeMillis() > timeStamp){
-            process(inputFrame.rgba());
-            timeStamp=timeStamp+2000;
+            runInBackground(() -> {
+                process(inputFrame.rgba());
+            });
+//            process(inputFrame.rgba());
+            timeStamp=timeStamp+3000;
             Log.e("Called","process");
         }
 
@@ -116,14 +168,28 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
     @Override
     public void onPause()
     {
-        super.onPause();
         if (mOpenCvCameraView != null)
             mOpenCvCameraView.disableView();
+        handlerThread.quitSafely();
+        try {
+            handlerThread.join();
+            handlerThread = null;
+            handler = null;
+        } catch (final InterruptedException e) {
+            e.printStackTrace();
+        }
+        super.onPause();
+
     }
     @Override
     public void onResume()
     {
         super.onResume();
+
+        handlerThread = new HandlerThread("inference");
+        handlerThread.start();
+        handler = new Handler(handlerThread.getLooper());
+
         if (!OpenCVLoader.initDebug()) {
             Log.d(TAG, "Internal OpenCV library not found. Using OpenCV Manager for initialization");
             OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_0_0, this, mLoaderCallback);
@@ -154,7 +220,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
     private Mat applyGaussianBlur(Mat mat){
         Mat updateMat = new Mat(mat.rows(),mat.cols(),mat.type());
-        Imgproc.GaussianBlur(mat,updateMat,new Size(15, 15),0);
+        Imgproc.GaussianBlur(mat,updateMat,new Size(3, 3),0);
         return updateMat;
     }
     private Bitmap getBitmap(Mat mat){
@@ -174,6 +240,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         Imgproc.threshold(mat,desMat,40,255,THRESH_BINARY);
         return desMat;
     }
+
 
 
     private void process(Mat secondFrame){
@@ -209,10 +276,11 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
 
         Mat thresholdRed  = findThreshold(redDif);
 
-        getContourArea(thresholdRed);
+//        List<Rect> contours = getContourArea(thresholdRed);
+        tracker.trackResults(getRecognition(thresholdRed));
+        trackingOverlay.postInvalidate();
 
 
-     //   Imgproc.drawContours();
     }
 
     private static ArrayList<Rect> getContourArea(Mat mat) {
@@ -230,6 +298,36 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
                 rect = Imgproc.boundingRect(contours.get(i));
                 Log.e("Rect","x-"+rect.x+", y-"+rect.y+" h-"+rect.height+", w-"+rect.width);
                 arr.add(rect);
+            }
+        }
+        return arr;
+    }
+    private ArrayList<Classifier.Recognition> getRecognition(Mat mat) {
+
+        Mat hierarchy = new Mat();
+        Mat image = mat.clone();
+        List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+        Imgproc.findContours(image, contours, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+        Rect rect = null;
+        double maxArea = 300;
+        ArrayList<Classifier.Recognition> arr = new ArrayList<Classifier.Recognition>();
+        for (int i = 0; i < contours.size(); i++) {
+            Mat contour = contours.get(i);
+            double contourArea = Imgproc.contourArea(contour);
+            if (contourArea > maxArea) {
+                rect = Imgproc.boundingRect(contours.get(i));
+                Log.e("Rect","x-"+rect.x+", y-"+rect.y+" h-"+rect.height+", w-"+rect.width);
+
+/*
+                Mat ROI = image.submat(rect.y, rect.y + rect.height, rect.x, rect.x + rect.width);
+                Bitmap bitmap = Bitmap.createBitmap(ROI.width(),ROI.height(), Bitmap.Config.ARGB_8888);
+                Utils.matToBitmap(ROI,bitmap);
+               // Classifier.Recognition classification = classifier.recognizeImage(bitmap, 0).get(0);
+
+*/
+                Classifier.Recognition asd = new Classifier.Recognition("id","test",0.9f,
+                        new RectF(rect.x,rect.y,rect.x+rect.width,rect.y+rect.height));
+                arr.add(asd);
             }
         }
         return arr;
@@ -308,4 +406,11 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         drawable.draw(canvas);
         return bitmap;
     }
+
+    protected synchronized void runInBackground(final Runnable r) {
+        if (handler != null) {
+            handler.post(r);
+        }
+    }
+
 }
