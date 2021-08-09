@@ -43,6 +43,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 
 import static org.opencv.imgproc.Imgproc.THRESH_BINARY;
@@ -103,7 +104,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
                     tracker.draw(canvas);
                 });
 
-        backImg = drawableToBitmap(getDrawable(R.drawable.img_back_1));
+        backImg = drawableToBitmap(getDrawable(R.drawable.img_back_shwrm2));
     }
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
@@ -223,12 +224,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         Imgproc.GaussianBlur(mat,updateMat,new Size(3, 3),0);
         return updateMat;
     }
-    private Bitmap getBitmap(Mat mat){
-        Bitmap.Config conf = Bitmap.Config.ARGB_8888; // see other conf types
-        Bitmap bitmap = Bitmap.createBitmap(mat.width(),mat.height(),conf);
-        Utils.matToBitmap(mat,bitmap);
-        return bitmap;
-    }
+
     private Mat findAbsDiff(Mat mat1,Mat mat2){
         Mat desMat = new Mat(mat1.rows(),mat1.cols(),mat1.type());
         Core.absdiff(mat1,mat2,desMat);
@@ -274,10 +270,19 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         Mat blueDif = findAbsDiff(blueBlurFrame1Gaussian,blueBlurFrame2Gaussian);
         Mat greenDif = findAbsDiff(greenBlurFrame1Gaussian,greenBlurFrame2Gaussian);
 
+
+        Mat thresholdAvgRB = new Mat();
+        Mat thresholdAvgRBG = new Mat();
+
         Mat thresholdRed  = findThreshold(redDif);
+        Mat thresholdBlue  = findThreshold(blueDif);
+        Mat thresholdGreen  = findThreshold(greenDif);
+
+        Core.addWeighted(thresholdRed, 0.33, thresholdBlue, 0.33, 0, thresholdAvgRB);
+        Core.addWeighted(thresholdAvgRB, 1.00, thresholdGreen, 0.33, 0, thresholdAvgRBG);
 
 //        List<Rect> contours = getContourArea(thresholdRed);
-        tracker.trackResults(getRecognition(thresholdRed));
+        tracker.trackResults(getRecognition(thresholdAvgRBG));
         trackingOverlay.postInvalidate();
 
 
@@ -302,6 +307,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         }
         return arr;
     }
+
     private ArrayList<Classifier.Recognition> getRecognition(Mat mat) {
 
         Mat hierarchy = new Mat();
@@ -318,16 +324,25 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
                 rect = Imgproc.boundingRect(contours.get(i));
                 Log.e("Rect","x-"+rect.x+", y-"+rect.y+" h-"+rect.height+", w-"+rect.width);
 
-/*
+
                 Mat ROI = image.submat(rect.y, rect.y + rect.height, rect.x, rect.x + rect.width);
                 Bitmap bitmap = Bitmap.createBitmap(ROI.width(),ROI.height(), Bitmap.Config.ARGB_8888);
                 Utils.matToBitmap(ROI,bitmap);
-               // Classifier.Recognition classification = classifier.recognizeImage(bitmap, 0).get(0);
+                com.example.imgprocopencv.tflite.Classifier.Recognition classification = classifier.recognizeImage(bitmap, 0).get(0);
 
-*/
-                Classifier.Recognition asd = new Classifier.Recognition("id","test",0.9f,
-                        new RectF(rect.x,rect.y,rect.x+rect.width,rect.y+rect.height));
-                arr.add(asd);
+                String title = classification.getTitle();
+
+                if (getProductTitles().containsKey(title.replace("\r",""))){
+                    title = getProductTitles().get(title.replace("\r",""));
+                }
+
+                if (classification != null){
+                    Classifier.Recognition asd = new Classifier.Recognition("id",title,classification.getConfidence(),
+                            new RectF(rect.x,rect.y,rect.x+rect.width,rect.y+rect.height));
+                    arr.add(asd);
+
+                }
+
             }
         }
         return arr;
@@ -413,4 +428,52 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         }
     }
 
+
+    public HashMap<String,String> getProductTitles(){
+
+        HashMap<String, String> titleToName = new HashMap<>();   // Item IDs mapped for a particular branch
+
+        // Following lines are added for a particular branch
+        titleToName.put("64785","Hershey");
+        titleToName.put("44951","Lays");
+        titleToName.put("41942","Cheetos");
+        titleToName.put("64791","Naked");
+//        titleToName.put("64784","Celsius");
+        titleToName.put("51161","Starburst");
+//        titleToName.put("51161","Big Red Starburst");
+        titleToName.put("64784","Celsius");
+//        titleToName.put("41942","Cheetos");
+        titleToName.put("44947","Cheez It");
+        titleToName.put("64810","Pocky");
+//        titleToName.put("64810","CnC Pocky");
+        titleToName.put("44949","Cool Ranch Doritos");
+        titleToName.put("51397","Fritos");
+        titleToName.put("64570","Ginger Ale");
+        titleToName.put("41948","Granola Minis");
+        titleToName.put("64790","Haribo");
+        titleToName.put("64787","Hershey");
+        titleToName.put("64554","Jack Links");
+        titleToName.put("64777","Kars");
+        titleToName.put("41941","KitKat");
+//        titleToName.put("64784","Kiwi Celsius");
+        titleToName.put("49253","Mac/Velveeta");
+        titleToName.put("49040","Nutella Breadstick");
+        titleToName.put("52047","Nutter Butter");
+        titleToName.put("44952","Oreo Mini");
+        titleToName.put("48575","Pistachios");
+        titleToName.put("44943","RedBull");
+        titleToName.put("44944","RedBull SugarFree");
+        titleToName.put("46194","Reeses");
+        titleToName.put("52224","Rice Krispies");
+        titleToName.put("64780","Skinny Pop");
+//        titleToName.put("51161","Small Pink Starburst");
+        titleToName.put("47526","Snyders Pretzels");
+        titleToName.put("44950","Spicy Cheetos");
+        titleToName.put("44933","Sprite");
+//        titleToName.put("64791","Strawberry Banana");
+//        titleToName.put("64810","Strawberry Pocky");
+        titleToName.put("41945","Twix");
+//        titleToName.put("49253","Velveeta");
+        return titleToName;
+    }
 }

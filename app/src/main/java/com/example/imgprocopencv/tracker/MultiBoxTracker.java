@@ -143,8 +143,8 @@ public class MultiBoxTracker {
 
       float cornerSize = Math.min(trackedPos.width(), trackedPos.height()) / 8.0f;
       canvas.drawRoundRect(trackedPos, cornerSize, cornerSize, boxPaint);
-
-    //  borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.top, "T", boxPaint);
+//      borderedText.drawText(canvas,0f,0f,"");
+      borderedText.drawText(canvas, trackedPos.left + cornerSize, trackedPos.top, recognition.title, boxPaint,recognition.location);
     }
   }
 
