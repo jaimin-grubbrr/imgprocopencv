@@ -211,8 +211,6 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
             mOpenCvCameraView.disableView();
     }
 
-
-
     private List<Mat> getChannel(Mat rgbMat){
         List<Mat> channels = new ArrayList<>();
         Core.split(rgbMat, channels);
@@ -246,9 +244,13 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
             return;
         }
 
+        int threshold = 0;
 
         Mat frame1 = firstFrame;
         Mat frame2 = secondFrame;
+
+        Imgproc.Canny(frame2, frame2, threshold, threshold * 3, 3, false);
+
 
         Mat redFrame1 = getChannel(frame1).get(0);
         Mat blueFrame1 = getChannel(frame1).get(1);
@@ -257,6 +259,8 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         Mat redFrame2 = getChannel(frame2).get(0);
         Mat blueFrame2 = getChannel(frame2).get(1);
         Mat greenFrame2 = getChannel(frame2).get(2);
+
+
 
         Mat redBlurFrame1Gaussian = applyGaussianBlur(redFrame1);
         Mat blueBlurFrame1Gaussian = applyGaussianBlur(blueFrame1);
@@ -277,6 +281,7 @@ public class MainActivity extends CameraActivity implements CameraBridgeViewBase
         Mat thresholdRed  = findThreshold(redDif);
         Mat thresholdBlue  = findThreshold(blueDif);
         Mat thresholdGreen  = findThreshold(greenDif);
+
 
         Core.addWeighted(thresholdRed, 0.33, thresholdBlue, 0.33, 0, thresholdAvgRB);
         Core.addWeighted(thresholdAvgRB, 1.00, thresholdGreen, 0.33, 0, thresholdAvgRBG);
